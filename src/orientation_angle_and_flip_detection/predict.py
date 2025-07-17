@@ -83,6 +83,7 @@ def predict(
             raise TypeError("Not support pass file")
 
         for category_folder in Path(input_path).iterdir():
+            images = list()
             if category_folder.is_file():
                 continue
             for image_path in category_folder.iterdir():
@@ -94,8 +95,28 @@ def predict(
                     model=model,
                     processor=processor,
                 )
-                plt.imshow(image)
+                images.append(image)
+
+                if len(images) == 10:
+                    fig, axes = plt.subplots(2, 5, figsize=(15, 6))
+                    axes = axes.flatten()
+
+                    for i, img in enumerate(images):
+                        axes[i].imshow(img)
+                        axes[i].set_title(f"Image {i + 1}")
+                        axes[i].axis("off")
+                    plt.show()
+                    images.clear()
+            if images:
+                fig, axes = plt.subplots(2, 5, figsize=(15, 6))
+                axes = axes.flatten()
+
+                for i, img in enumerate(images):
+                    axes[i].imshow(img)
+                    axes[i].set_title(f"Image {i + 1}")
+                    axes[i].axis("off")
                 plt.show()
+                images.clear()
 
 
 if __name__ == "__main__":
