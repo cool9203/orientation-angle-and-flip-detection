@@ -96,23 +96,22 @@ class OAaFDNet(ResNetPreTrainedModel):
 
         pooled_output_1 = outputs_1.pooler_output if return_dict else outputs_1[1]
         pooled_output_2 = outputs_2.pooler_output if return_dict else outputs_2[1]
-
-        logits_angle = self.angle_classifier(torch.cat([pooled_output_1, pooled_output_2]))
-        logits_flip = self.flip_classifier(torch.cat([pooled_output_1, pooled_output_2]))
+        feature = torch.cat([pooled_output_1, pooled_output_2], dim=1)
+        logits_angle = self.angle_classifier(feature)
+        logits_flip = self.flip_classifier(feature)
 
         loss = None
-
         if labels is not None and len(labels) == 2:
             angle_loss_fct = CrossEntropyLoss()
             loss_angle = angle_loss_fct(logits_angle.view(-1, self.num_labels_angle), labels[0].view(-1))
 
-            if self.num_labels == 1:
+            if self.num_labels_flip == 1:
                 flip_loss_fct = MSELoss()
-                if self.num_labels == 1:
+                if self.num_labels_flip == 1:
                     loss_flip = flip_loss_fct(logits_flip.squeeze(), labels[1].squeeze())
                 else:
                     loss_flip = flip_loss_fct(logits_flip, labels[1])
-            elif self.num_labels > 1 and (labels[1].dtype == torch.long or labels[1].dtype == torch.int):
+            elif self.num_labels_flip > 1 and (labels[1].dtype == torch.long or labels[1].dtype == torch.int):
                 flip_loss_fct = CrossEntropyLoss()
                 loss = flip_loss_fct(logits_flip.view(-1, self.num_labels_flip), labels[1].view(-1))
 

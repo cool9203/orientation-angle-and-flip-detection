@@ -31,10 +31,10 @@ def preprocess_dataset(
             label_flip = payload["label_flip"]
 
             label_angle = {
-                "0": [1, 0, 0, 0],
-                "90": [0, 1, 0, 0],
-                "180": [0, 0, 1, 0],
-                "270": [0, 0, 0, 1],
+                "0": [0],
+                "90": [1],
+                "180": [2],
+                "270": [3],
             }.get(str(label_angle))
             label_flip = [1, 0] if str(label_flip).lower() in ["1", "true", "yes"] else [0, 1]
 
@@ -81,12 +81,12 @@ def train(script_args, training_args, model_args):
         pixel_values_1 = processor([example["pixel_values_1"] for example in examples], return_tensors="pt")
         pixel_values_2 = processor([example["pixel_values_2"] for example in examples], return_tensors="pt")
         labels = [
-            torch.Tensor([example["labels"][0] for example in examples]),
-            torch.Tensor([example["labels"][1] for example in examples]),
+            torch.LongTensor([example["labels"][0] for example in examples]),
+            torch.LongTensor([example["labels"][1] for example in examples]),
         ]
         return dict(
-            pixel_values_1=pixel_values_1,
-            pixel_values_2=pixel_values_2,
+            pixel_values_1=pixel_values_1["pixel_values"],
+            pixel_values_2=pixel_values_2["pixel_values"],
             labels=labels,
         )
 
