@@ -27,7 +27,7 @@ def arg_parser() -> argparse.Namespace:
 def create_empty_label_file(
     input_path: os.PathLike,
     output_path: os.PathLike = None,
-    output_format: os.PathLike = None,
+    output_format: str = None,
     tqdm: bool = True,
 ) -> list[dict[str, str | int | float]]:
     output_format = (
@@ -52,7 +52,7 @@ def create_empty_label_file(
                     category=category_folder.name,
                     image_path=str(image_path.resolve()),
                     angle="0",
-                    flip="true",
+                    flip="false",
                 )
             )
 

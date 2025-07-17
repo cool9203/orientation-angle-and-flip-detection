@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+
+<head>
+    <meta charset="UTF-8">
+    <title>圖像旋轉翻轉工具</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            text-align: center;
+            padding: 20px;
+        }
+
+        img {
+            max-width: 80%;
+            max-height: 60vh;
+            margin: 40px 0;
+        }
+
+        button {
+            margin: 5px;
+            padding: 10px 20px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>標記圖像旋轉翻轉工具</h1>
+
+    <input type="file" id="fileInput" webkitdirectory multiple />
+    <div>
+        <button onclick="rotateImage()">旋轉 90°</button>
+        <button onclick="flipImage()">水平翻轉</button>
+        <button onclick="nextImage()">送出（下一張）</button>
+        <button onclick="downloadLabels()">儲存</button>
+    </div>
+    <div>
+        <img id="imageDisplay" />
+    </div>
+
+    <script>
+        let files = [];
+        let currentIndex = 0;
+        let angle = 0;
+        let flipped = false;
+        let labels = [];
+
+        const fileInput = document.getElementById('fileInput');
+        const imageDisplay = document.getElementById('imageDisplay');
+
+        fileInput.addEventListener('change', () => {
+            files = Array.from(fileInput.files).filter(file => file.type.startsWith('image/'));
+            currentIndex = 0;
+            labels = [];
+            loadImage();
+        });
+
+        function loadImage() {
+            if (currentIndex >= files.length) {
+                alert("所有圖片已處理完畢。");
+                imageDisplay.src = "";
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                imageDisplay.src = e.target.result;
+                angle = 0;
+                flipped = false;
+                imageDisplay.style.transform = "rotate(0deg) scaleX(1)";
+            };
+            reader.readAsDataURL(files[currentIndex]);
+        }
+
+        function rotateImage() {
+            angle = (angle + 90) % 360;
+            updateTransform();
+        }
+
+        function flipImage() {
+            flipped = !flipped;
+            updateTransform();
+        }
+
+        function updateTransform() {
+            const scaleX = flipped ? -1 : 1;
+            imageDisplay.style.transform = `rotate(${angle}deg) scaleX(${scaleX})`;
+        }
+
+        function nextImage() {
+            const label = {
+                image_path: files[currentIndex].webkitRelativePath,
+                category: files[currentIndex].webkitRelativePath.split('/')[1],
+                angle: angle.toString(),
+                flip: flipped.toString()
+            };
+            labels.push(label);
+            currentIndex++;
+            loadImage();
+        }
+
+        function downloadLabels() {
+            const blob = new Blob([JSON.stringify(labels, null, 4)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'labels.json';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+    </script>
+</body>
+
+</html>
