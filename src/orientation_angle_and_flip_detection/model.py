@@ -113,7 +113,7 @@ class OAaFDNet(ResNetPreTrainedModel):
                     loss_flip = flip_loss_fct(logits_flip, labels[1])
             elif self.num_labels_flip > 1 and (labels[1].dtype == torch.long or labels[1].dtype == torch.int):
                 flip_loss_fct = CrossEntropyLoss()
-                loss = flip_loss_fct(logits_flip.view(-1, self.num_labels_flip), labels[1].view(-1))
+                loss_flip = flip_loss_fct(logits_flip.view(-1, self.num_labels_flip), labels[1].view(-1))
 
             loss = 0.5 * loss_angle + 0.5 * loss_flip
 

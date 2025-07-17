@@ -36,7 +36,7 @@ def preprocess_dataset(
                 "180": [2],
                 "270": [3],
             }.get(str(label_angle))
-            label_flip = [1, 0] if str(label_flip).lower() in ["1", "true", "yes"] else [0, 1]
+            label_flip = [1] if str(label_flip).lower() in ["1", "true", "yes"] else [0]
 
             data.append(
                 {
@@ -70,7 +70,7 @@ def train(script_args, training_args, model_args):
         pretrained_model_name_or_path=model_args.model_name_or_path,
         trust_remote_code=model_args.trust_remote_code,
         num_labels_angle=4,
-        num_labels_flip=1,
+        num_labels_flip=2,
         **model_kwargs,
     )
 
