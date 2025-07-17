@@ -6,12 +6,13 @@ from typing import Optional, Sequence
 import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss, MSELoss
-from transformers import PretrainedConfig, ResNetModel, ResNetPreTrainedModel
+from transformers import ResNetConfig, ResNetModel, ResNetPreTrainedModel
+from transformers.modeling_outputs import BaseModelOutputWithPoolingAndNoAttention
 from transformers.utils import ModelOutput
 
 
 @dataclass
-class ImageClassifierOutputWithNoAttention(ModelOutput):
+class ImageOrientationAngleAndFlipOutputWithNoAttention(ModelOutput):
     """
     Base class for outputs of image classification models.
 
@@ -38,7 +39,7 @@ class ImageClassifierOutputWithNoAttention(ModelOutput):
 class OAaFDNet(ResNetPreTrainedModel):
     def __init__(
         self,
-        config: PretrainedConfig,
+        config: ResNetConfig,
         num_labels_angle: int = 4,
         num_labels_flip: int = 1,
     ):
@@ -75,7 +76,7 @@ class OAaFDNet(ResNetPreTrainedModel):
         labels: Optional[Sequence[torch.LongTensor]] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
-    ) -> ImageClassifierOutputWithNoAttention:
+    ) -> ImageOrientationAngleAndFlipOutputWithNoAttention:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
             Labels for computing the image classification/regression loss. Indices should be in `[0, ...,
@@ -83,12 +84,12 @@ class OAaFDNet(ResNetPreTrainedModel):
         """
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        outputs_1 = self.resnet(
+        outputs_1: BaseModelOutputWithPoolingAndNoAttention = self.resnet(
             pixel_values_1,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
         )
-        outputs_2 = self.resnet(
+        outputs_2: BaseModelOutputWithPoolingAndNoAttention = self.resnet(
             pixel_values_2,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
@@ -97,8 +98,8 @@ class OAaFDNet(ResNetPreTrainedModel):
         pooled_output_1 = outputs_1.pooler_output if return_dict else outputs_1[1]
         pooled_output_2 = outputs_2.pooler_output if return_dict else outputs_2[1]
         feature = torch.cat([pooled_output_1, pooled_output_2], dim=1)
-        logits_angle = self.angle_classifier(feature)
-        logits_flip = self.flip_classifier(feature)
+        logits_angle: torch.Tensor = self.angle_classifier(feature)
+        logits_flip: torch.Tensor = self.flip_classifier(feature)
 
         loss = None
         if labels is not None and len(labels) == 2:
@@ -128,7 +129,7 @@ class OAaFDNet(ResNetPreTrainedModel):
             )
             return (loss,) + output if loss is not None else output
 
-        return ImageClassifierOutputWithNoAttention(
+        return ImageOrientationAngleAndFlipOutputWithNoAttention(
             loss=loss,
             logits_angle=logits_angle,
             logits_flip=logits_flip,
