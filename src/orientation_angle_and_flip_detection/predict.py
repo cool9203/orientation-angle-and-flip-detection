@@ -46,8 +46,8 @@ def predict_one(
     logits_angle = output.logits_angle
     logits_flip = output.logits_flip
 
-    rotate_counts = list(logits_angle).index(1) if sum(logits_angle) else 0
-    need_flip = True if logits_flip[1] == 1 else False
+    rotate_counts = logits_angle.argmax(dim=1)[0]
+    need_flip = logits_flip.argmax(dim=1)[0] == 1
 
     for _ in range(rotate_counts):
         image_predict = image_predict.rotate(90, expand=True)
@@ -83,6 +83,8 @@ def predict(
             raise TypeError("Not support pass file")
 
         for category_folder in Path(input_path).iterdir():
+            if category_folder.is_file():
+                continue
             for image_path in category_folder.iterdir():
                 if image_path.suffix not in supported_extensions:
                     continue
@@ -92,7 +94,8 @@ def predict(
                     model=model,
                     processor=processor,
                 )
-                plt.show(image)
+                plt.imshow(image)
+                plt.show()
 
 
 if __name__ == "__main__":
