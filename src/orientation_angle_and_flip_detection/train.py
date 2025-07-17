@@ -35,8 +35,8 @@ def preprocess_dataset(
                 "90": [0, 1, 0, 0],
                 "180": [0, 0, 1, 0],
                 "270": [0, 0, 0, 1],
-            }.get(label_angle)
-            label_flip = [1, 0] if label_flip.lower() in ["1", "true", "yes"] else [0, 1]
+            }.get(str(label_angle))
+            label_flip = [1, 0] if str(label_flip).lower() in ["1", "true", "yes"] else [0, 1]
 
             data.append(
                 {

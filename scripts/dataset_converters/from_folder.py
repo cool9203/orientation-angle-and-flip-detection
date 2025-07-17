@@ -8,6 +8,9 @@ import pprint
 from pathlib import Path
 
 import tqdm as TQDM
+from PIL import Image
+
+supported_extensions = {ex for ex, f in Image.registered_extensions().items() if f in Image.OPEN}
 
 
 def arg_parser() -> argparse.Namespace:
@@ -40,7 +43,8 @@ def from_folder(
         if tqdm
         else Path(input_reference_image_path).iterdir()
     ):
-        reference_images[reference_image_path.stem] = reference_image_path
+        if reference_image_path.suffix in supported_extensions:
+            reference_images[reference_image_path.stem] = reference_image_path
 
     # Load label data
     with Path(label_path).open(mode="r", encoding="utf-8") as f:
@@ -75,6 +79,8 @@ def from_folder(
             if tqdm
             else category_folder.iterdir()
         ):
+            if image_path.suffix not in supported_extensions:
+                continue
             dataset[category_folder.name].append(
                 {
                     "image_1": str(reference_images[category_folder.name]),
