@@ -31,7 +31,7 @@ def predict_one(
     processor: ConvNextFeatureExtractor,
 ) -> Image.Image:
     if Path(image_path).suffix not in supported_extensions:
-        raise TypeError("Not support image extension")
+        raise TypeError(f"Not support image extension: '{image_path!s}'")
 
     image = Image.open(image_path)
     image = image.convert("RGB")

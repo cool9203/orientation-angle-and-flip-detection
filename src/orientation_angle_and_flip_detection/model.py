@@ -41,7 +41,7 @@ class OAaFDNet(ResNetPreTrainedModel):
         self,
         config: ResNetConfig,
         num_labels_angle: int = 4,
-        num_labels_flip: int = 1,
+        num_labels_flip: int = 2,
     ):
         super().__init__(config)
         self.num_labels_angle = getattr(config, "num_labels_angle", num_labels_angle)
