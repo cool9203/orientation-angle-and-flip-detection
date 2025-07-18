@@ -51,11 +51,11 @@ class OAaFDNet(ResNetPreTrainedModel):
         # classification head
         self.angle_classifier = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(config.hidden_sizes[-1] * 2, num_labels_angle, bias=False),
+            nn.Linear(config.hidden_sizes[-1], num_labels_angle, bias=False),
         )
         self.flip_classifier = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(config.hidden_sizes[-1] * 2, num_labels_flip, bias=False),
+            nn.Linear(config.hidden_sizes[-1], num_labels_flip, bias=False),
         )
 
         # update config
@@ -97,7 +97,7 @@ class OAaFDNet(ResNetPreTrainedModel):
 
         pooled_output_1 = outputs_1.pooler_output if return_dict else outputs_1[1]
         pooled_output_2 = outputs_2.pooler_output if return_dict else outputs_2[1]
-        feature = torch.cat([pooled_output_1, pooled_output_2], dim=1)
+        feature = pooled_output_1 + pooled_output_2
         logits_angle: torch.Tensor = self.angle_classifier(feature)
         logits_flip: torch.Tensor = self.flip_classifier(feature)
 
@@ -116,7 +116,7 @@ class OAaFDNet(ResNetPreTrainedModel):
                 flip_loss_fct = CrossEntropyLoss()
                 loss_flip = flip_loss_fct(logits_flip.view(-1, self.num_labels_flip), labels[1].view(-1))
 
-            loss = 0.5 * loss_angle + 0.5 * loss_flip
+            loss = loss_angle + loss_flip
 
         if not return_dict:
             output = (
