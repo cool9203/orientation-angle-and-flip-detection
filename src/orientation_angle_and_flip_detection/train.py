@@ -53,7 +53,10 @@ def compute_metrics(eval_pred):
     predictions_flip = np.argmax(eval_pred.predictions[1], axis=1)
     correct = 0
     for index in range(len(predictions_angle)):
-        if predictions_angle[index] == eval_pred.label_ids[0][0] and predictions_flip[index] == eval_pred.label_ids[1][0]:
+        if (
+            predictions_angle[index] == eval_pred.label_ids[0][index][0]
+            and predictions_flip[index] == eval_pred.label_ids[1][index][0]
+        ):
             correct += 1
     return {"accuracy": correct / len(predictions_angle)}
 
