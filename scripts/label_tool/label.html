@@ -84,7 +84,7 @@
 
         function updateTransform() {
             const scaleX = flipped ? -1 : 1;
-            imageDisplay.style.transform = `rotate(${angle}deg) scaleX(${scaleX})`;
+            imageDisplay.style.transform = `rotate(${360 - angle}deg) scaleX(${scaleX})`;
         }
 
         function nextImage() {

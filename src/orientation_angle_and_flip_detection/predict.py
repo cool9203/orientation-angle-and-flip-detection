@@ -49,9 +49,9 @@ def predict_one(
     rotate_counts = logits_angle.argmax(dim=1)[0]
     need_flip = logits_flip.argmax(dim=1)[0] == 1
 
+    image_predict = image_predict.transpose(Image.FLIP_LEFT_RIGHT) if need_flip else image_predict
     for _ in range(rotate_counts):
         image_predict = image_predict.rotate(90, expand=True)
-    image_predict = image_predict.transpose(Image.FLIP_LEFT_RIGHT) if need_flip else image_predict
 
     return image_predict
 
