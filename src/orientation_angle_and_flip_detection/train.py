@@ -48,6 +48,16 @@ def preprocess_dataset(
     return data
 
 
+def compute_metrics(eval_pred):
+    predictions_angle = np.argmax(eval_pred.predictions[0], axis=1)
+    predictions_flip = np.argmax(eval_pred.predictions[1], axis=1)
+    correct = 0
+    for index in range(len(predictions_angle)):
+        if predictions_angle[index] == eval_pred.label_ids[0][0] and predictions_flip[index] == eval_pred.label_ids[1][0]:
+            correct += 1
+    return {"accuracy": correct / len(predictions_angle)}
+
+
 def train(script_args, training_args, model_args):
     training_args.gradient_checkpointing_kwargs = dict(use_reentrant=False)
     training_args.remove_unused_columns = False
@@ -125,6 +135,7 @@ def train(script_args, training_args, model_args):
         data_collator=collate_fn,
         train_dataset=dataset[script_args.dataset_train_split],
         eval_dataset=(dataset[script_args.dataset_test_split] if training_args.eval_strategy != "no" else None),
+        compute_metrics=compute_metrics,
         processing_class=processor,
     )
 

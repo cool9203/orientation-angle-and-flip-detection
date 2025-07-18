@@ -9,6 +9,7 @@ accelerate launch src/orientation_angle_and_flip_detection/train.py \
 	--logging_steps 10 \
 	--save_strategy best \
 	--load_best_model_at_end \
+	--metric_for_best_model accuracy \
 	`# Train` \
 	--per_device_train_batch_size 1 \
 	--gradient_accumulation_steps 4 \
