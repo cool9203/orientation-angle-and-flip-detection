@@ -3,6 +3,7 @@
 import json
 import os
 from pathlib import Path
+from random import Random
 
 import numpy as np
 import torch
@@ -21,28 +22,34 @@ from orientation_angle_and_flip_detection.model import OAaFDNet
 
 def preprocess_dataset(
     dataset_path: os.PathLike,
+    seed: int | float | str | bytes | bytearray | None = None,
 ):
+    rng = Random(seed)
     data = list()
     with Path(dataset_path).open(mode="r", encoding="utf-8") as f:
         for payload in tqdm.tqdm(list(json.load(fp=f))):
-            image_1 = payload["image_1"]
-            image_2 = payload["image_2"]
+            image_1 = Image.open(payload["image_1"]).convert("RGB")
+            image_2 = Image.open(payload["image_2"]).convert("RGB")
             label_angle = payload["label_angle"]
             label_flip = payload["label_flip"]
+            label_angle = int(label_angle) // 90
+            label_flip = 1 if str(label_flip).lower() in ["1", "true", "yes"] else 0
 
-            label_angle = {
-                "0": [0],
-                "90": [1],
-                "180": [2],
-                "270": [3],
-            }.get(str(label_angle))
-            label_flip = [1] if str(label_flip).lower() in ["1", "true", "yes"] else [0]
+            image_2_origin = image_2.rotate(((4 - label_angle) % 4) * 90, expand=True)
+            random_angle = rng.randint(0, 3)
+            random_flip = rng.randint(0, 1)
 
             data.append(
                 {
-                    "pixel_values_1": Image.open(image_1).convert("RGB"),
-                    "pixel_values_2": Image.open(image_2).convert("RGB"),
-                    "labels": [label_angle, label_flip],
+                    "pixel_values_1": image_1,
+                    "pixel_values_2": image_2,
+                    "pixel_values_3": image_1,
+                    "pixel_values_4": (image_2_origin.transpose(Image.FLIP_LEFT_RIGHT) if random_flip else image_2_origin).rotate(
+                        random_angle * 90, expand=True
+                    )
+                    if random_angle > 0
+                    else image_2_origin,
+                    "labels": [[label_angle], [label_flip], [random_angle], [random_flip]],
                 }
             )
     return data
@@ -93,13 +100,19 @@ def train(script_args, training_args, model_args):
     def collate_fn(examples):
         pixel_values_1 = processor([example["pixel_values_1"] for example in examples], return_tensors="pt")
         pixel_values_2 = processor([example["pixel_values_2"] for example in examples], return_tensors="pt")
+        pixel_values_3 = processor([example["pixel_values_3"] for example in examples], return_tensors="pt")
+        pixel_values_4 = processor([example["pixel_values_4"] for example in examples], return_tensors="pt")
         labels = [
             torch.LongTensor([example["labels"][0] for example in examples]),
             torch.LongTensor([example["labels"][1] for example in examples]),
+            torch.LongTensor([example["labels"][3] for example in examples]),
+            torch.LongTensor([example["labels"][4] for example in examples]),
         ]
         return dict(
             pixel_values_1=pixel_values_1["pixel_values"],
             pixel_values_2=pixel_values_2["pixel_values"],
+            pixel_values_3=pixel_values_3["pixel_values"],
+            pixel_values_4=pixel_values_4["pixel_values"],
             labels=labels,
         )
 
@@ -111,10 +124,14 @@ def train(script_args, training_args, model_args):
     if np.array([True if Path(dataset_path, "train.json").exists() else False for dataset_path in dataset_names]).all():
         train_data = list()
         val_data = list()
-        for dataset_path in dataset_names:
-            train_data += preprocess_dataset(dataset_path=Path(dataset_path, "train.json"))
+        for i, dataset_path in enumerate(dataset_names):
+            train_data += preprocess_dataset(
+                dataset_path=Path(dataset_path, "train.json"), seed=f"train_{int(training_args.seed) + i}"
+            )
             if Path(dataset_path, "val.json").exists():
-                val_data += preprocess_dataset(dataset_path=Path(dataset_path, "val.json"))
+                val_data += preprocess_dataset(
+                    dataset_path=Path(dataset_path, "val.json"), seed=f"val{int(training_args.seed) + i}"
+                )
 
         dataset = DatasetDict(
             {

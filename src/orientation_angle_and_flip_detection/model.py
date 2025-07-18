@@ -6,6 +6,7 @@ from typing import Optional, Sequence
 import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss, MSELoss
+from torch.nn.functional import cosine_similarity
 from transformers import ResNetConfig, ResNetModel, ResNetPreTrainedModel
 from transformers.modeling_outputs import BaseModelOutputWithPoolingAndNoAttention
 from transformers.utils import ModelOutput
@@ -51,10 +52,14 @@ class OAaFDNet(ResNetPreTrainedModel):
         # classification head
         self.angle_classifier = nn.Sequential(
             nn.Flatten(),
+            nn.Linear(config.hidden_sizes[-1], config.hidden_sizes[-1], bias=False),
+            nn.ReLU(),
             nn.Linear(config.hidden_sizes[-1], num_labels_angle, bias=False),
         )
         self.flip_classifier = nn.Sequential(
             nn.Flatten(),
+            nn.Linear(config.hidden_sizes[-1], config.hidden_sizes[-1], bias=False),
+            nn.ReLU(),
             nn.Linear(config.hidden_sizes[-1], num_labels_flip, bias=False),
         )
 
@@ -73,6 +78,8 @@ class OAaFDNet(ResNetPreTrainedModel):
         self,
         pixel_values_1: Optional[torch.FloatTensor] = None,
         pixel_values_2: Optional[torch.FloatTensor] = None,
+        pixel_values_3: Optional[torch.FloatTensor] = None,
+        pixel_values_4: Optional[torch.FloatTensor] = None,
         labels: Optional[Sequence[torch.LongTensor]] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
@@ -84,55 +91,94 @@ class OAaFDNet(ResNetPreTrainedModel):
         """
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        outputs_1: BaseModelOutputWithPoolingAndNoAttention = self.resnet(
+        outputs_1_1: BaseModelOutputWithPoolingAndNoAttention = self.resnet(
             pixel_values_1,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
         )
-        outputs_2: BaseModelOutputWithPoolingAndNoAttention = self.resnet(
+        outputs_1_2: BaseModelOutputWithPoolingAndNoAttention = self.resnet(
             pixel_values_2,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
         )
 
-        pooled_output_1 = outputs_1.pooler_output if return_dict else outputs_1[1]
-        pooled_output_2 = outputs_2.pooler_output if return_dict else outputs_2[1]
-        feature = pooled_output_1 + pooled_output_2
-        logits_angle: torch.Tensor = self.angle_classifier(feature)
-        logits_flip: torch.Tensor = self.flip_classifier(feature)
+        pooled_output_1_1 = outputs_1_1.pooler_output if return_dict else outputs_1_1[1]
+        pooled_output_1_2 = outputs_1_2.pooler_output if return_dict else outputs_1_2[1]
+        feature_1 = pooled_output_1_1 + pooled_output_1_2
+        logits_angle_1: torch.Tensor = self.angle_classifier(feature_1)
+        logits_flip_1: torch.Tensor = self.flip_classifier(feature_1)
 
         loss = None
-        if labels is not None and len(labels) == 2:
+        if labels is not None:
+            if len(labels) != 4:
+                raise ValueError(f"labels format error, should dim-4, but got dim-{len(labels)}")
+
+            outputs_2_1: BaseModelOutputWithPoolingAndNoAttention = self.resnet(
+                pixel_values_3,
+                output_hidden_states=output_hidden_states,
+                return_dict=return_dict,
+            )
+            outputs_2_2: BaseModelOutputWithPoolingAndNoAttention = self.resnet(
+                pixel_values_4,
+                output_hidden_states=output_hidden_states,
+                return_dict=return_dict,
+            )
+
+            pooled_output_2_1 = outputs_2_1.pooler_output if return_dict else outputs_2_1[1]
+            pooled_output_2_2 = outputs_2_2.pooler_output if return_dict else outputs_2_2[1]
+            feature_2 = pooled_output_2_1 + pooled_output_2_2
+            logits_angle_2: torch.Tensor = self.angle_classifier(feature_2)
+            logits_flip_2: torch.Tensor = self.flip_classifier(feature_2)
+
             angle_loss_fct = CrossEntropyLoss()
-            loss_angle = angle_loss_fct(logits_angle.view(-1, self.num_labels_angle), labels[0].view(-1))
+            loss_angle_1 = angle_loss_fct(logits_angle_1.view(-1, self.num_labels_angle), labels[0].view(-1))
+            loss_angle_2 = angle_loss_fct(logits_angle_2.view(-1, self.num_labels_angle), labels[2].view(-1))
 
             if self.num_labels_flip == 1:
                 flip_loss_fct = MSELoss()
                 if self.num_labels_flip == 1:
-                    loss_flip = flip_loss_fct(logits_flip.squeeze(), labels[1].squeeze())
+                    loss_flip_1 = flip_loss_fct(logits_flip_1.squeeze(), labels[1].squeeze())
+                    loss_flip_2 = flip_loss_fct(logits_flip_2.squeeze(), labels[3].squeeze())
                 else:
-                    loss_flip = flip_loss_fct(logits_flip, labels[1])
+                    loss_flip_1 = flip_loss_fct(logits_flip_1, labels[1])
+                    loss_flip_2 = flip_loss_fct(logits_flip_2, labels[3])
             elif self.num_labels_flip > 1 and (labels[1].dtype == torch.long or labels[1].dtype == torch.int):
                 flip_loss_fct = CrossEntropyLoss()
-                loss_flip = flip_loss_fct(logits_flip.view(-1, self.num_labels_flip), labels[1].view(-1))
+                loss_flip_1 = flip_loss_fct(logits_flip_1.view(-1, self.num_labels_flip), labels[1].view(-1))
+                loss_flip_2 = flip_loss_fct(logits_flip_2.view(-1, self.num_labels_flip), labels[3].view(-1))
 
-            loss = loss_angle + loss_flip
+            # Contrastive learning loss
+            representations_angle = torch.cat([logits_angle_1, logits_angle_2], dim=0)
+            representations_flip = torch.cat([logits_flip_1, logits_flip_2], dim=0)
+            sim_angle = cosine_similarity(representations_angle.unsqueeze(1), representations_angle.unsqueeze(0), dim=2)
+            sim_flip = cosine_similarity(representations_flip.unsqueeze(1), representations_flip.unsqueeze(0), dim=2)
+            sim_labels_angle = torch.LongTensor([[1] if l1 == l2 else [0] for l1, l2 in torch.cat(labels[0], labels[2])]).to(
+                pixel_values_1.device
+            )
+            sim_labels_flip = torch.LongTensor([[1] if l1 == l2 else [0] for l1, l2 in torch.cat(labels[1], labels[3])]).to(
+                pixel_values_1.device
+            )
+
+            sim_loss_fct = CrossEntropyLoss()
+            sim_loss = sim_loss_fct(sim_angle, sim_labels_angle) + sim_loss_fct(sim_flip, sim_labels_flip)
+
+            loss = loss_angle_1 + loss_angle_2 + loss_flip_1 + loss_flip_2 + sim_loss
 
         if not return_dict:
             output = (
                 (
-                    logits_angle,
-                    logits_flip,
+                    logits_angle_1,
+                    logits_flip_1,
                 )
-                + outputs_1[2:]
-                + outputs_2[2:]
+                + outputs_1_1[2:]
+                + outputs_1_2[2:]
             )
             return (loss,) + output if loss is not None else output
 
         return ImageOrientationAngleAndFlipOutputWithNoAttention(
             loss=loss,
-            logits_angle=logits_angle,
-            logits_flip=logits_flip,
-            hidden_states_1=outputs_1.hidden_states,
-            hidden_states_2=outputs_2.hidden_states,
+            logits_angle=logits_angle_1,
+            logits_flip=logits_flip_1,
+            hidden_states_1=outputs_1_1.hidden_states,
+            hidden_states_2=outputs_1_2.hidden_states,
         )
