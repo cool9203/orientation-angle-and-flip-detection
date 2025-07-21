@@ -105,8 +105,8 @@ def train(script_args, training_args, model_args):
         labels = [
             torch.LongTensor([example["labels"][0] for example in examples]),
             torch.LongTensor([example["labels"][1] for example in examples]),
+            torch.LongTensor([example["labels"][2] for example in examples]),
             torch.LongTensor([example["labels"][3] for example in examples]),
-            torch.LongTensor([example["labels"][4] for example in examples]),
         ]
         return dict(
             pixel_values_1=pixel_values_1["pixel_values"],

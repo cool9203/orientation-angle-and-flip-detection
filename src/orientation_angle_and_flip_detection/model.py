@@ -152,12 +152,12 @@ class OAaFDNet(ResNetPreTrainedModel):
             representations_flip = torch.cat([logits_flip_1, logits_flip_2], dim=0)
             sim_angle = cosine_similarity(representations_angle.unsqueeze(1), representations_angle.unsqueeze(0), dim=2)
             sim_flip = cosine_similarity(representations_flip.unsqueeze(1), representations_flip.unsqueeze(0), dim=2)
-            sim_labels_angle = torch.LongTensor([[1] if l1 == l2 else [0] for l1, l2 in torch.cat(labels[0], labels[2])]).to(
-                pixel_values_1.device
-            )
-            sim_labels_flip = torch.LongTensor([[1] if l1 == l2 else [0] for l1, l2 in torch.cat(labels[1], labels[3])]).to(
-                pixel_values_1.device
-            )
+            sim_labels_angle = torch.LongTensor(
+                [[1] if label[0] == label[1] else [0] for label in torch.cat([labels[0], labels[2]])]
+            ).to(pixel_values_1.device)
+            sim_labels_flip = torch.LongTensor(
+                [[1] if label[0] == label[1] else [0] for label in torch.cat([labels[1], labels[3]])]
+            ).to(pixel_values_1.device)
 
             sim_loss_fct = CrossEntropyLoss()
             sim_loss = sim_loss_fct(sim_angle, sim_labels_angle) + sim_loss_fct(sim_flip, sim_labels_flip)
