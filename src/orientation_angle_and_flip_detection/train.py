@@ -2,6 +2,7 @@
 
 import json
 import os
+import random
 from pathlib import Path
 
 import numpy as np
@@ -10,18 +11,25 @@ import tqdm
 from datasets import Dataset, DatasetDict, load_dataset
 from PIL import Image
 from transformers import AutoImageProcessor, ConvNextFeatureExtractor, Trainer, TrainingArguments
-from trl import (
-    ModelConfig,
-    ScriptArguments,
-    TrlParser,
-)
+from trl import ModelConfig, ScriptArguments, TrlParser
 
 from orientation_angle_and_flip_detection.model import OAaFDNet
+
+CLASS_NAME = "{flip} {angle}"
+IMAGE_CACHE_NAME = "{category}-{flip}-{angle}"
+
+
+def generate_one_random_pair_data(
+    rng: random.Random,
+) -> dict[str, Image.Image | str]:
+    pass
 
 
 def preprocess_dataset(
     dataset_path: os.PathLike,
     image_count: int = None,
+    balance: bool = False,
+    seed: int | float | str | bytes | bytearray | None = None,
 ):
     image_1_cache: dict[str, Image.Image] = dict()
     all_data: dict[str, dict[str, list[dict[str, str | int | float | Image.Image]]]] = dict()
@@ -34,19 +42,22 @@ def preprocess_dataset(
             angle = int(angle) % 360
             flip = str(flip).lower() in ["1", "true", "yes"]
             category = Path(payload["image_1"]).stem
-            class_name = f"{flip} {angle}"
+            class_name = CLASS_NAME.format(flip=flip, angle=angle)
+            image_1_name = IMAGE_CACHE_NAME.format(category=category, flip=False, angle=0)
 
             if category not in all_data:
                 all_data[category] = dict()
-            if class_name not in all_data[category]:
-                all_data[category][class_name] = list()
+                for _flip in [False, True]:
+                    for _angle in [0, 90, 180, 270]:
+                        class_name = f"{_flip} {_angle}"
+                        all_data[category] = list()
 
             if category not in image_1_cache:
-                image_1_cache[category] = Image.open(payload["image_1"]).convert("RGB")
+                image_1_cache[image_1_name] = Image.open(payload["image_1"]).convert("RGB")
 
             all_data[category][class_name].append(
                 {
-                    "image_1_name": f"{category}",
+                    "image_1_name": image_1_name,
                     "image_2": Image.open(payload["image_2"]).convert("RGB"),
                     "labels": [[angle], [flip]],
                     "angle": angle,
@@ -61,11 +72,41 @@ def preprocess_dataset(
     )
 
     # Make balance dataset
-    for category, class_data in all_data.items():
-        for class_name, payloads in class_data.items():
-            origin_length = len(payloads)
-            for index in range(image_count - origin_length):
-                index
+    if balance:
+        print("Auto generate balance dataset")
+        print(f"image_count: {image_count}")
+
+        rng = random.Random(seed)
+        for category, class_data in all_data.items():
+            for class_name, payloads in class_data.items():
+                for index in range(image_count - len(payloads)):
+                    angle = all_data[category][class_name][index % image_count]["angle"]
+                    flip = all_data[category][class_name][index % image_count]["flip"]
+
+                    epoch = index // image_count
+                    if epoch < 4:
+                        image_1_name_new = IMAGE_CACHE_NAME.format(category=category, flip=flip, angle=90 * epoch)
+                        image_2_new = all_data[category][class_name][index % image_count]["image_2"].rotate(
+                            90 * epoch, expand=True
+                        )
+                        if image_1_name_new not in image_1_cache:
+                            base_image_1_name = IMAGE_CACHE_NAME.format(category=category, flip=False, angle=0)
+                            image_1_new = (
+                                image_1_cache.get(base_image_1_name).transpose(Image.FLIP_LEFT_RIGHT)
+                                if flip
+                                else image_1_cache.get(base_image_1_name)
+                            ).rotate(90 * epoch, expand=True)
+                            image_1_cache[image_1_name_new] = image_1_new
+                        all_data[category][class_name].append(
+                            dict(
+                                image_1_name=image_1_name_new,
+                                image_2=image_2_new,
+                                angle=angle,
+                                flip=flip,
+                            )
+                        )
+                    else:
+                        pass
 
     dataset = list()
     for category, class_data in all_data.items():
@@ -148,9 +189,12 @@ def train(script_args, training_args, model_args):
         train_data = list()
         val_data = list()
         for dataset_path in dataset_names:
-            train_data += preprocess_dataset(dataset_path=Path(dataset_path, "train.json"))
+            train_data += preprocess_dataset(dataset_path=Path(dataset_path, "train.json"), balance=True, seed=training_args.seed)
             if Path(dataset_path, "val.json").exists():
-                val_data += preprocess_dataset(dataset_path=Path(dataset_path, "val.json"))
+                val_data += preprocess_dataset(dataset_path=Path(dataset_path, "val.json"), balance=False)
+
+        print(f"All train data: {len(train_data)}")
+        print(f"All val data: {len(val_data)}")
 
         dataset = DatasetDict(
             {
