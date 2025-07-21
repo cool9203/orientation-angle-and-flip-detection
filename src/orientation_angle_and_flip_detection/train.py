@@ -21,31 +21,67 @@ from orientation_angle_and_flip_detection.model import OAaFDNet
 
 def preprocess_dataset(
     dataset_path: os.PathLike,
+    image_count: int = None,
 ):
-    data = list()
+    image_1_cache: dict[str, Image.Image] = dict()
+    all_data: dict[str, dict[str, list[dict[str, str | int | float | Image.Image]]]] = dict()
+
+    # Pre-load all data
     with Path(dataset_path).open(mode="r", encoding="utf-8") as f:
         for payload in tqdm.tqdm(list(json.load(fp=f))):
-            image_1 = payload["image_1"]
-            image_2 = payload["image_2"]
-            label_angle = payload["label_angle"]
-            label_flip = payload["label_flip"]
+            angle = payload.get("angle", None) or payload.get("label_angle", None)
+            flip = payload.get("flip", None) or payload.get("label_flip", None)
+            angle = int(angle) % 360
+            flip = str(flip).lower() in ["1", "true", "yes"]
+            category = Path(payload["image_1"]).stem
+            class_name = f"{flip} {angle}"
 
-            label_angle = {
-                "0": [0],
-                "90": [1],
-                "180": [2],
-                "270": [3],
-            }.get(str(label_angle))
-            label_flip = [1] if str(label_flip).lower() in ["1", "true", "yes"] else [0]
+            if category not in all_data:
+                all_data[category] = dict()
+            if class_name not in all_data[category]:
+                all_data[category][class_name] = list()
 
-            data.append(
+            if category not in image_1_cache:
+                image_1_cache[category] = Image.open(payload["image_1"]).convert("RGB")
+
+            all_data[category][class_name].append(
                 {
-                    "pixel_values_1": Image.open(image_1).convert("RGB"),
-                    "pixel_values_2": Image.open(image_2).convert("RGB"),
-                    "labels": [label_angle, label_flip],
+                    "image_1_name": f"{category}",
+                    "image_2": Image.open(payload["image_2"]).convert("RGB"),
+                    "labels": [[angle], [flip]],
+                    "angle": angle,
+                    "flip": flip,
                 }
             )
-    return data
+
+    image_count = (
+        image_count
+        if image_count
+        else max([len(payloads) for category, class_data in all_data.items() for class_name, payloads in class_data.items()])
+    )
+
+    # Make balance dataset
+    for category, class_data in all_data.items():
+        for class_name, payloads in class_data.items():
+            origin_length = len(payloads)
+            for index in range(image_count - origin_length):
+                index
+
+    dataset = list()
+    for category, class_data in all_data.items():
+        for class_name, payloads in class_data.items():
+            for payload in payloads:
+                dataset.append(
+                    {
+                        "pixel_values_1": image_1_cache.get(payload["image_1_name"]),
+                        "pixel_values_2": payload["image_2"],
+                        "labels": [
+                            [int(payload["angle"]) // 90],
+                            [int(payload["flip"])],
+                        ],
+                    }
+                )
+    return dataset
 
 
 def compute_metrics(eval_pred):
