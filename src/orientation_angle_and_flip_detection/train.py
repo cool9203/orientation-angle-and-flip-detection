@@ -25,6 +25,57 @@ def generate_one_random_pair_data(
     pass
 
 
+def generate_balance_dataset(
+    all_data: dict[str, dict[str, list[dict[str, str | int | float | Image.Image]]]],
+    image_1_cache: dict[str, Image.Image],
+    image_count: int = None,
+    seed: int | float | str | bytes | bytearray | None = None,
+) -> tuple[
+    dict[str, dict[str, list[dict[str, str | int | float | Image.Image]]]],
+    dict[str, Image.Image],
+]:
+    print("Auto generate balance dataset")
+    print(f"image_count: {image_count}")
+
+    image_count = (
+        image_count
+        if image_count
+        else max([len(payloads) for category, class_data in all_data.items() for class_name, payloads in class_data.items()])
+    )
+
+    rng = random.Random(seed)
+    for category, class_data in all_data.items():
+        for class_name, payloads in class_data.items():
+            origin_length = len(payloads)
+            for index in range(image_count - origin_length):
+                epoch = index // origin_length
+                if origin_length > 0 and epoch < 4:
+                    angle = all_data[category][class_name][index % origin_length]["angle"]
+                    flip = all_data[category][class_name][index % origin_length]["flip"]
+                    image_1_name_new = IMAGE_CACHE_NAME.format(category=category, flip=flip, angle=90 * epoch)
+                    image_2_new = all_data[category][class_name][index % origin_length]["image_2"].rotate(90 * epoch, expand=True)
+                    if image_1_name_new not in image_1_cache:
+                        base_image_1_name = IMAGE_CACHE_NAME.format(category=category, flip=False, angle=0)
+                        image_1_new = (
+                            image_1_cache.get(base_image_1_name).transpose(Image.FLIP_LEFT_RIGHT)
+                            if flip
+                            else image_1_cache.get(base_image_1_name)
+                        ).rotate(90 * epoch, expand=True)
+                        image_1_cache[image_1_name_new] = image_1_new
+                    all_data[category][class_name].append(
+                        dict(
+                            image_1_name=image_1_name_new,
+                            image_2=image_2_new,
+                            angle=angle,
+                            flip=flip,
+                        )
+                    )
+                else:
+                    pass
+
+    return all_data
+
+
 def preprocess_dataset(
     dataset_path: os.PathLike,
     image_count: int = None,
@@ -50,7 +101,7 @@ def preprocess_dataset(
                 for _flip in [False, True]:
                     for _angle in [0, 90, 180, 270]:
                         class_name = f"{_flip} {_angle}"
-                        all_data[category] = list()
+                        all_data[category][class_name] = list()
 
             if category not in image_1_cache:
                 image_1_cache[image_1_name] = Image.open(payload["image_1"]).convert("RGB")
@@ -65,48 +116,16 @@ def preprocess_dataset(
                 }
             )
 
-    image_count = (
-        image_count
-        if image_count
-        else max([len(payloads) for category, class_data in all_data.items() for class_name, payloads in class_data.items()])
+    (all_data, image_1_cache) = (
+        generate_balance_dataset(
+            all_data=all_data,
+            image_1_cache=image_1_cache,
+            image_count=image_count,
+            seed=seed,
+        )
+        if balance
+        else (all_data, image_1_cache)
     )
-
-    # Make balance dataset
-    if balance:
-        print("Auto generate balance dataset")
-        print(f"image_count: {image_count}")
-
-        rng = random.Random(seed)
-        for category, class_data in all_data.items():
-            for class_name, payloads in class_data.items():
-                for index in range(image_count - len(payloads)):
-                    angle = all_data[category][class_name][index % image_count]["angle"]
-                    flip = all_data[category][class_name][index % image_count]["flip"]
-
-                    epoch = index // image_count
-                    if epoch < 4:
-                        image_1_name_new = IMAGE_CACHE_NAME.format(category=category, flip=flip, angle=90 * epoch)
-                        image_2_new = all_data[category][class_name][index % image_count]["image_2"].rotate(
-                            90 * epoch, expand=True
-                        )
-                        if image_1_name_new not in image_1_cache:
-                            base_image_1_name = IMAGE_CACHE_NAME.format(category=category, flip=False, angle=0)
-                            image_1_new = (
-                                image_1_cache.get(base_image_1_name).transpose(Image.FLIP_LEFT_RIGHT)
-                                if flip
-                                else image_1_cache.get(base_image_1_name)
-                            ).rotate(90 * epoch, expand=True)
-                            image_1_cache[image_1_name_new] = image_1_new
-                        all_data[category][class_name].append(
-                            dict(
-                                image_1_name=image_1_name_new,
-                                image_2=image_2_new,
-                                angle=angle,
-                                flip=flip,
-                            )
-                        )
-                    else:
-                        pass
 
     dataset = list()
     for category, class_data in all_data.items():
