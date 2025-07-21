@@ -15,7 +15,7 @@ supported_extensions = {ex for ex, f in Image.registered_extensions().items() if
 def arg_parser() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Convert dataset from folder")
     parser.add_argument("-i", "--input_path", type=str, required=True, help="Input path")
-    parser.add_argument("-o", "--output_path", type=str, required=True, help="Output path")
+    parser.add_argument("-o", "--output_path", type=str, default=None, help="Output path")
     parser.add_argument("-f", "--output_format", type=str, choices=["json", "jsonl"], default="json", help="Output format")
     parser.add_argument("--tqdm", action="store_true", help="Show progress bar")
 

@@ -1,10 +1,10 @@
 # coding: utf-8
 
 import argparse
-import ast
 import os
 import pprint
-from pathlib import Path
+
+from utils import load_labels
 
 
 def arg_parser() -> argparse.Namespace:
@@ -18,50 +18,45 @@ def arg_parser() -> argparse.Namespace:
 
 def analysis_data(
     input_path: os.PathLike,
-):
+) -> dict[str, dict[str, list[str]]]:
     # Load label data
-    labels: dict[str, dict[str, str]] = dict()
-    with Path(input_path).open(mode="r", encoding="utf-8") as f:
-        if Path(input_path).suffix in [".json"]:
-            _iter_data = ast.literal_eval(f.read())
-        elif Path(input_path).suffix in [".jsonl"]:
-            _iter_data = list(ast.literal_eval(line) for line in f.readlines())
-        else:
-            raise TypeError("Not support")
-
-        for info in _iter_data:
-            category = info["category"]
-            image_path = info["image_path"]
-            angle = info["angle"]
-            flip = info["flip"]
-            if category not in labels:
-                labels[category] = dict()
-            labels[category][Path(image_path).name] = dict(
-                angle=str(angle),
-                flip=str(flip).lower(),
-            )
+    labels = load_labels(label_path=input_path)
 
     # Analysis
-
+    all_data: dict[str, dict[str, list[str]]] = dict()
     for category, image_info in labels.items():
-        all_angles = list()
-        all_flips = list()
+        data: dict[str, int] = dict()
         for image_name, info in image_info.items():
-            all_angles.append(info["angle"])
-            all_flips.append(info["flip"])
+            name = f"{info['flip']} {info['angle']}"
+            if name not in data:
+                data[name] = list()
+            data[name].append(image_name)
 
-        print(f"{category} Angles:")
-        print(f"  - 0: {all_angles.count('0')}, {all_angles.count('0') / len(all_angles)}")
-        print(f"  - 90: {all_angles.count('90')}, {all_angles.count('90') / len(all_angles)}")
-        print(f"  - 180: {all_angles.count('180')}, {all_angles.count('180') / len(all_angles)}")
-        print(f"  - 270: {all_angles.count('270')}, {all_angles.count('270') / len(all_angles)}")
-        print(f"{category} Flip:")
-        print(f"  - false: {all_flips.count('false')}, {all_flips.count('false') / len(all_flips)}")
-        print(f"  - true: {all_flips.count('true')}, {all_flips.count('true') / len(all_flips)}")
+        all_data[category] = data  # Update to all data
+
+    # Calc all distributed and save to all_data
+    _all_data: dict[str, int] = dict()
+    for category, data in all_data.items():
+        for name, filenames in data.items():
+            if name not in _all_data:
+                _all_data[name] = list()
+            _all_data[name] += filenames
+    all_data["all"] = _all_data
+
+    return all_data
 
 
 if __name__ == "__main__":
     args = arg_parser()
     args_dict = vars(args)
     pprint.pprint(args_dict)
-    analysis_data(**args_dict)
+    analysis_results = analysis_data(**args_dict)
+
+    # Show distributed
+    for category, data in analysis_results.items():
+        names = sorted(data.keys())
+        data_count = sum([len(filenames) for _, filenames in data.items()])
+
+        print(f"{category}:")
+        for name in names:
+            print(f"  - {name}: {len(data[name])}, {len(data[name]) / data_count}")
