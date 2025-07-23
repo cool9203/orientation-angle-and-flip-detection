@@ -15,14 +15,8 @@ from trl import ModelConfig, ScriptArguments, TrlParser
 
 from orientation_angle_and_flip_detection.model import OAaFDNet
 
-CLASS_NAME = "{flip} {angle}"
+CLASS_NAME = "{flip}-{angle}"
 IMAGE_CACHE_NAME = "{category}-{flip}-{angle}"
-
-
-def generate_one_random_pair_data(
-    rng: random.Random,
-) -> dict[str, Image.Image | str]:
-    pass
 
 
 def generate_balance_dataset(
@@ -43,37 +37,64 @@ def generate_balance_dataset(
         else max([len(payloads) for category, class_data in all_data.items() for class_name, payloads in class_data.items()])
     )
 
+    complete_data = dict()
+    for category, class_data in all_data.items():
+        for class_name, payloads in class_data.items():
+            if category not in complete_data:
+                complete_data[category] = dict()
+            complete_data[category][class_name] = list()
+
     rng = random.Random(seed)
     for category, class_data in all_data.items():
         for class_name, payloads in class_data.items():
-            origin_length = len(payloads)
-            for index in range(image_count - origin_length):
-                epoch = index // origin_length
-                if origin_length > 0 and epoch < 4:
-                    angle = all_data[category][class_name][index % origin_length]["angle"]
-                    flip = all_data[category][class_name][index % origin_length]["flip"]
-                    image_1_name_new = IMAGE_CACHE_NAME.format(category=category, flip=flip, angle=90 * epoch)
-                    image_2_new = all_data[category][class_name][index % origin_length]["image_2"].rotate(90 * epoch, expand=True)
-                    if image_1_name_new not in image_1_cache:
-                        base_image_1_name = IMAGE_CACHE_NAME.format(category=category, flip=False, angle=0)
-                        image_1_new = (
-                            image_1_cache.get(base_image_1_name).transpose(Image.FLIP_LEFT_RIGHT)
-                            if flip
-                            else image_1_cache.get(base_image_1_name)
-                        ).rotate(90 * epoch, expand=True)
-                        image_1_cache[image_1_name_new] = image_1_new
-                    all_data[category][class_name].append(
-                        dict(
-                            image_1_name=image_1_name_new,
-                            image_2=image_2_new,
-                            angle=angle,
-                            flip=flip,
-                        )
-                    )
-                else:
-                    pass
+            for index in range(image_count - len(payloads)):
+                random_index = None
+                while random_index is None:
+                    class_name_random_index = rng.randint(0, len(class_data.keys()) - 1)
+                    class_name_random = list(class_data.keys())[class_name_random_index]
+                    if len(all_data[category][class_name_random]) > 0 and class_name_random != class_name:
+                        random_index = rng.randint(0, len(all_data[category][class_name_random]) - 1)
+                target_angle = int(class_name.split("-")[1])
+                target_flip = class_name.split("-")[0].lower() == "true"
 
-    return all_data
+                source_angle = all_data[category][class_name_random][random_index]["angle"]
+                source_flip = all_data[category][class_name_random][random_index]["flip"]
+                base_image_2 = all_data[category][class_name_random][random_index]["image_2"].copy()
+                source_image_2 = (base_image_2.transpose(Image.FLIP_LEFT_RIGHT) if source_flip else base_image_2).rotate(
+                    source_angle, expand=True
+                )  # Restore to non-flip and 0-angle
+
+                random_angle = rng.randint(0, 3) * 90
+                random_flip = rng.randint(0, 1) == 1
+                image_1_name_new = IMAGE_CACHE_NAME.format(category=category, flip=random_angle, angle=random_flip)
+                if image_1_name_new not in image_1_cache:
+                    base_image_1_name = IMAGE_CACHE_NAME.format(category=category, flip=False, angle=0)
+                    base_image_1 = image_1_cache.get(base_image_1_name).copy()
+                    image_1_new = base_image_1.rotate(random_angle, expand=True)
+                    image_1_new = image_1_new.transpose(Image.FLIP_LEFT_RIGHT) if random_flip else image_1_new
+                    image_1_cache[image_1_name_new] = image_1_new
+
+                # To image_1_new
+                image_2_new = source_image_2.rotate(random_angle, expand=True)
+                image_2_new = image_2_new.transpose(Image.FLIP_LEFT_RIGHT) if random_flip else image_2_new
+                # To target flip and angle
+                image_2_new = image_2_new.rotate(target_angle * (-1), expand=True) if target_angle != 0 else image_2_new
+                image_2_new = image_2_new.transpose(Image.FLIP_LEFT_RIGHT) if target_flip else image_2_new
+
+                complete_data[category][class_name].append(
+                    dict(
+                        image_1_name=image_1_name_new,
+                        image_2=image_2_new,
+                        angle=target_angle,
+                        flip=target_flip,
+                    )
+                )
+
+    for category, class_data in all_data.items():
+        for class_name, _ in class_data.items():
+            all_data[category][class_name] += complete_data[category][class_name]
+
+    return (all_data, image_1_cache)
 
 
 def preprocess_dataset(
@@ -100,8 +121,9 @@ def preprocess_dataset(
                 all_data[category] = dict()
                 for _flip in [False, True]:
                     for _angle in [0, 90, 180, 270]:
-                        class_name = f"{_flip} {_angle}"
-                        all_data[category][class_name] = list()
+                        class_name = CLASS_NAME.format(flip=_flip, angle=_angle)
+                        if class_name not in all_data[category]:
+                            all_data[category][class_name] = list()
 
             if category not in image_1_cache:
                 image_1_cache[image_1_name] = Image.open(payload["image_1"]).convert("RGB")
