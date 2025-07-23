@@ -2,6 +2,8 @@ accelerate launch src/orientation_angle_and_flip_detection/train.py \
 	`# Dataset` \
 	--dataset_name /mnt/c/Users/ychsu/Downloads/沛波標記data/鋼材辨識/沛波圖形邊長定義/train_data/converted/20250716-oad-data \
 	--dataset_test_split val \
+	--balance \
+	--image_count 100 \
 	`# Model` \
 	--model_name_or_path "microsoft/resnet-50" \
 	`# Output` \

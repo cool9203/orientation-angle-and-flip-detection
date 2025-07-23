@@ -3,7 +3,9 @@
 import json
 import os
 import random
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 import torch
@@ -17,6 +19,18 @@ from orientation_angle_and_flip_detection.model import OAaFDNet
 
 CLASS_NAME = "{flip}-{angle}"
 IMAGE_CACHE_NAME = "{category}-{flip}-{angle}"
+
+
+@dataclass
+class ExtendArguments:
+    balance: Optional[bool] = field(
+        default=False,
+        metadata={"help": "Auto generate balance dataset"},
+    )
+    image_count: Optional[int] = field(
+        default=None,
+        metadata={"help": "Set balance dataset max data count in every category and class"},
+    )
 
 
 def generate_balance_dataset(
@@ -179,7 +193,12 @@ def compute_metrics(eval_pred):
     return {"accuracy": correct / len(predictions_angle)}
 
 
-def train(script_args, training_args, model_args):
+def train(
+    script_args,
+    training_args,
+    model_args,
+    extend_args,
+):
     training_args.gradient_checkpointing_kwargs = dict(use_reentrant=False)
     training_args.remove_unused_columns = False
     training_args.dataset_kwargs = {"skip_prepare_dataset": True}
@@ -230,7 +249,12 @@ def train(script_args, training_args, model_args):
         train_data = list()
         val_data = list()
         for dataset_path in dataset_names:
-            train_data += preprocess_dataset(dataset_path=Path(dataset_path, "train.json"), balance=True, seed=training_args.seed)
+            train_data += preprocess_dataset(
+                dataset_path=Path(dataset_path, "train.json"),
+                balance=extend_args.balance,
+                image_count=extend_args.image_count,
+                seed=training_args.seed,
+            )
             if Path(dataset_path, "val.json").exists():
                 val_data += preprocess_dataset(dataset_path=Path(dataset_path, "val.json"), balance=False)
 
@@ -275,6 +299,6 @@ def train(script_args, training_args, model_args):
 
 
 if __name__ == "__main__":
-    parser = TrlParser((ScriptArguments, TrainingArguments, ModelConfig))
-    script_args, training_args, model_args = parser.parse_args_and_config()
-    train(script_args, training_args, model_args)
+    parser = TrlParser((ScriptArguments, TrainingArguments, ModelConfig, ExtendArguments))
+    script_args, training_args, model_args, extend_args = parser.parse_args_and_config()
+    train(script_args, training_args, model_args, extend_args)
