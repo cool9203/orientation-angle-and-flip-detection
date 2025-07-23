@@ -9,7 +9,7 @@ from utils import load_labels
 
 def arg_parser() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Analysis data")
-    parser.add_argument("-i", "--input_path", type=str, help="Input paths")
+    parser.add_argument("-i", "--input_path", type=str, help="Input path")
 
     args = parser.parse_args()
 
